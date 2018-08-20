@@ -1,0 +1,252 @@
+---
+title: "Data Visualization - Group Assignment"
+output: html_document
+author: "TEAM H: Angel Papadopulos | Sina Jiani | Tommy Cuna | Jose Quispe | Maria Munoz | Tommaso Condulmari | Shanmukha Chitrachedu"
+---
+
+```{r setup, include=FALSE}
+library(dplyr)
+library(lubridate)
+library(dygraphs)
+library(reshape)
+library(ggplot2)
+library(gridExtra)
+library(ggthemes)
+library(forcats)
+```
+
+# 1. Import data
+
+```{r}
+# import data
+df <- read.csv("/Users/tommasocondulmari/Google Drive/DATA VISUALIZATION/assignment/group/madrid_transactions/data/madrid_transactions.csv")
+df$X <- NULL
+
+# transform tx_date_proc to date type
+df$tx_date_proc <- as_datetime(df$tx_date_proc)
+# rename tx_date_proc to "date_time"
+names(df)[names(df) == 'tx_date_proc'] <- 'date_time'
+
+# explore data
+head(df)
+str(df)
+summary(df)
+```
+# 2. Analysis
+## 2.1 Outliers
+```{r}
+# outliers
+
+# boxplot 1 - all rows
+ggplot(df, aes(x = category, y = amount)) + 
+  geom_boxplot(aes(fill = category)) +
+  labs(y = "Total Amount [euros]", x = "Category", title = "Amount distribution per category") +
+  geom_hline(yintercept = 5000, color="red", linetype = 'dashed', alpha = 0.6) +
+  coord_flip() +
+  theme_minimal() + 
+  theme(legend.position = 'none')
+
+# # boxplot 2 - remove > 5000
+# ggplot(df[-which(df$amount > 5000), ], aes(x = category, y = amount)) + 
+#   geom_boxplot(aes(fill = category)) +
+#   labs(y = "Total Amount [euros]", x = "Category") +
+#   geom_hline(yintercept = 3000, color="slategrey", linetype = 'dashed', alpha = 0.6) +
+#   coord_flip() +
+#   theme_minimal() + 
+#   theme(legend.position = 'none')
+# 
+# # boxplot 2 - remove > 3000
+# ggplot(df[-which(df$amount > 3000), ], aes(x = category, y = amount)) + 
+#   geom_boxplot(aes(fill = category)) +
+#   labs(y = "Total Amount [euros]", x = "Category") +
+#   coord_flip() +
+#   theme_minimal() + 
+#   theme(legend.position = 'none')
+```
+
+```{r}
+df[df$amount > 5000,]
+df <- df[-which(df$amount > 5000), ]
+```
+
+## 2.2.	Thursday vs. Friday
+```{r}
+# OVERVIEW - PLOT BY WEEKDAY
+df_byweekday <- df %>% group_by(weekday) %>% summarize(tot_count = n(), tot_amount = round(sum(amount)/1000,2))
+df_byweekday <- as.data.frame(df_byweekday)
+df_byweekday <- melt(df_byweekday, id = c("weekday"))
+
+# renaming facets titles
+names <- c(`tot_amount` = "Tot Amount [x1000 euros]",
+           `tot_count` = "Volume")
+
+# plot
+p1 <- ggplot(df_byweekday, aes(x = weekday, fill = weekday, y = value)) +
+  geom_bar(position = "dodge", stat = "identity", width = 0.4) +
+  facet_grid(.~variable, scales = "free_x", labeller = as_labeller(names)) +
+  labs(x = "Weekday", y = "Value", fill = "Weekday", title = "Volume and Total Amount per Weekday ") +
+  geom_text(aes(label= value), hjust= 1.2) +
+  #geom_hline(data = means_df, aes(yintercept = means), color="slategrey", linetype = 'dashed', alpha = 0.6) +
+  coord_flip() + 
+  theme_minimal() +
+  scale_fill_ptol() + 
+  theme(legend.position = "none")
+
+# print plot
+p1
+
+# save plot
+# ggsave("/Users/tommasocondulmari/Google Drive/DATA VISUALIZATION/assignment/group/madrid_transactions/plots/plot_1_overview.png")
+```
+
+
+```{r}
+# create data frame gouping by category and weekday
+# calculate total sum, count and average bill
+df_by_cat_wday <- df %>% group_by(category, weekday) %>% summarize(tot_count = n(), tot_amount = sum(amount)/1000, avg_bill = sum(amount)/n())
+df_by_cat_wday <- as.data.frame(df_by_cat_wday)
+# melt all the metrics in one value colum
+df_by_cat_wday_melt <- melt(df_by_cat_wday, id = c("category", "weekday"))
+
+# renaming facets titles
+names <- c(`tot_amount` = "Tot Amount [x1000 euros]",
+           `tot_count` = "Volume",
+           `avg_bill` = "Avg Bill")
+
+# calculate mean for each metric - to draw line on each facet
+means_df <- data.frame(variable = c("tot_count", "tot_amount", "avg_bill"),
+                       means = c(mean(df_by_cat_wday_melt[df_by_cat_wday_melt$variable == "tot_count", "value"]),
+                                 mean(df_by_cat_wday_melt[df_by_cat_wday_melt$variable == "tot_amount", "value"]),
+                                 mean(df_by_cat_wday_melt[df_by_cat_wday_melt$variable == "avg_bill", "value"])
+                                 ))
+
+# plot
+p2 <- ggplot(df_by_cat_wday_melt, aes(x = reorder(category, value), fill = weekday, y = value)) +
+  geom_bar(position = "dodge", stat = "identity") +
+  facet_grid(.~variable, scales = "free_x", labeller = as_labeller(names)) +
+  labs(x = "Category", y = "Value", fill = "Weekday", title = "Volume, Total Amount and Average Bill per Category and Weekday") +
+  geom_hline(data = means_df, aes(yintercept = means), color="slategrey", linetype = 'dashed', alpha = 0.6) +
+  coord_flip() + 
+  theme_minimal() +
+  scale_fill_ptol() #+ 
+  #theme(legend.position = c(0.92, 0.9))
+
+# print plot
+p2
+
+# combine two plots
+# grid.arrange(p1, p2, ncol=1, nrow =2, heights= c(0.4, 0.6))
+
+# ggsave("/Users/tommasocondulmari/Google Drive/DATA VISUALIZATION/assignment/group/madrid_transactions/plots/plot_2_overview.png")
+```
+
+
+```{r}
+df_bycategory <- df %>% group_by(category) %>% summarize(tot_amount = sum(amount), tot_count = n(), avg_bill = sum(amount)/n())
+df_bycategory$share_amount <- round(df_bycategory$tot_amount/sum(df_bycategory$tot_amount),2)
+df_bycategory$share_count <- round(df_bycategory$tot_count/sum(df_bycategory$tot_count),2)
+
+df_bycategory <- df_bycategory[order(df_bycategory$tot_count, decreasing = T),]
+df_bycategory
+```
+
+## 2.3.	Time is everything
+```{r}
+df_byhour <- df %>% group_by(hour) %>% summarize(tot_count = n()/2, tot_amount = sum(amount)/2)
+
+ggplot(df_byhour, aes(x = hour))+
+  # add volume
+  geom_line(aes(y = tot_count, colour = "Volume")) +
+  geom_point(aes(y = tot_count, colour = "Volume")) +
+  
+  # add tot amount transformed to match the range of the volume
+  geom_line(aes(y = tot_amount/100, colour = "Tot Amount")) + 
+  geom_point(aes(y = tot_amount/100, colour = "Tot Amount")) +
+  
+  # add secondary axis, and reverting the above transformation
+  scale_y_continuous(sec.axis = sec_axis(~.*100, name = "Tot Amount [euros]")) +
+  
+  # general settings
+  scale_x_continuous(breaks=seq(0,23)) +
+  scale_colour_manual(values = c("blue", "red")) +
+  labs(y = "Volume", x = "Hour [0-23]", colour = "Parameter", title = "Average Total Amount and Volume over the day") + 
+  theme_minimal() + scale_color_ptol() +
+  theme(legend.position = c(0.13, 0.88))
+```
+
+## 2.4.	Density
+```{r}
+# selecting categories to plot
+categories <- c("Accommodation", "Fashion & Shoes", "Bars & restaurants", "Books & Music")
+
+# plot
+ggplot(df[df$category%in%categories,], aes(hour, color = category, fill=category)) + 
+  geom_density(alpha=0.4) +
+  labs(y = "Density", x = "Hour [0-23]", 
+       fill = "Category", color = "Category", 
+       title = "Density distribution of transactions per category over the day") +
+  scale_x_continuous(breaks=seq(0,23)) +
+  theme_minimal() + scale_fill_ptol() + scale_color_ptol()
+
+#ggplot(df, aes(x= hour, y = amount, col = category)) + geom_line()
+```
+
+
+## 2.5.	Customer's value
+
+```{r}
+df_bycountry <- df %>% group_by(customer_country) %>% summarize(tot_count = n(), tot_amount = sum(amount)/1000, avg_bill = sum(amount)/n())
+df_bycountry <- as.data.frame(df_bycountry)
+df_bycountry <- df_bycountry[order(df_bycountry$tot_count, decreasing = T),]
+# df_bycountry$share_amount <- round(df_bycountry$tot_amount/sum(df_bycountry$tot_amount),2)
+# df_bycountry$share_count <- round(df_bycountry$tot_count/sum(df_bycountry$tot_count),2)
+
+df_bycountry <- df_bycountry[1:10, ]
+df_bycountry <- melt(df_bycountry, id = "customer_country")
+
+# renaming facets titles
+names <- c(`tot_amount` = "Tot Amount [x1000 euros]",
+           `tot_count` = "Volume",
+           `avg_bill` = "Avg Bill")
+
+ggplot(df_bycountry, aes(x = reorder(customer_country,value), y = value, fill = customer_country)) +
+  geom_bar(stat = "identity") +
+  labs(x = "Country", y = "Value", fill = "Country") +
+  facet_grid(.~variable, scales = "free_x", labeller = as_labeller(names)) +
+  coord_flip() +
+  theme_minimal() + scale_fill_ptol() +
+  theme(legend.position = 'none')
+  
+```
+
+
+```{r}
+# select top 5 countries by volume of transaction
+top_countries <- df %>% group_by(customer_country) %>% summarize(tot_count = n())
+top_countries <- top_countries[order(top_countries$tot_count, decreasing = T),]
+top5_countries <- top_countries$customer_country[1:5]
+
+# select categories that are NOT taken in consideration
+categories <- c("Personal products", "Health", "Transportation", "Food", "Automoci\303\263n")
+
+# group by country and category
+df_bycountry_top <- df[df$customer_country %in% top5_countries & !df$category%in%categories, ] %>% group_by(customer_country, category) %>% summarize(tot_amount = sum(amount), tot_count = n(), avg_bill = sum(amount)/n())
+
+# using the same order as top5_countries so that it replicates in the plot
+df_bycountry_top$customer_country = factor(df_bycountry_top$customer_country, levels= top5_countries)
+
+# correct outlier with the average
+df_bycountry_top[df_bycountry_top$customer_country == "GB" & df_bycountry_top$category == "Culture & Leisure", "avg_bill"] <- 100
+
+# plot
+ggplot(df_bycountry_top, aes(x = reorder(category, avg_bill), y = avg_bill, fill = category)) +
+  geom_bar(stat = 'identity') +
+  facet_grid(.~customer_country) +
+  theme_minimal() + scale_fill_ptol() +
+  labs(x = "Category", y = "Avg. Ticket", title = "Average Ticket by Category and Country") +
+  coord_flip() +
+  theme(legend.position = 'none')
+```
+
+
+
