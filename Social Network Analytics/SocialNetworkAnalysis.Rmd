@@ -1,539 +1,490 @@
 ---
 title: "Social Network Analysis - Exercise 2"
-author: PairXX - Yangjia Huang  &  Thomas Cuna
+author: Pair - Yangjia Huang - Thomas Cuna
 output: html_document
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-
 library(igraph)
 library(ggplot2)
-library(NMF)
-library(gridExtra)
+library(gridExtra)	
 ```
 
-## Loading data and basic description
+On this first exercise, we will learn the basic functions of the Igraph package, a great tool to use Social Network Analysis metrics in our projects. We will use in this first exercise a dataset, "mathoverflow-ints.txt", containing interactions between MathOverflow users with the next information:
 
-In this second assignment, we will use a new dataset, Twitter activity around a rumor. In particular, in your dataset, you will find RTs between users, in this format:
+- Answers to questions
+- Comments to questions
+- Comments to answers
 
-- First column:  retweeting user
-- Second column: retweeted user
-- Third column: timestamp
+You have to complete the code chunks in this document but also analyze the results, extract insights and describe them in an understandable way.
 
-As we did in our first assignment you have to:
+<span style="color:blue">Please, write all your conclusions in blue</span>
 
-- Load the dataset
-- Build the original graph object. Your resulting graph must be directed (and be careful with the direction during the rest of the assignment)
-- We are NOT going to simplify this graph 
-- We are NOT going to keep only the largest connected component
+Both exercises may be done individually or in pairs; do not forget to write the name of the members of the team at the beginning of this document and also your team number in the name of this file (exercise1_PXX.Rmd)
 
-After loading your data you have to describe your graph in a paragraph, mentioning how many nodes and edges it has, how many connected components and how they are (both weak and strong), and how the degree distribution is (is it power law?) for both, in and out degree. Additionally, compute the global clustering and reciprocity for this graph. Interpret your results.
+## Loading data
 
-```{r message=F, warning=F}
-# CHUNK 1
+In this section, the goal is loading the dataset given for this exercise, building the graph object and analyzing basics metrics.
 
-data <- read.table("file:///C:/Users/Thomas Cuna/Documents/IE/MBD/3rd Term Classes/Social Network Analysis/assignment2/higgs-activity_time_RTS.txt", header = T)
+- Build the graph object with all the interactions. Include the timestamp and the type of the edge as edge attributes.
+- Describe the values provided by summary function on the graph object.
+- ###Validate the graph has been created correctly comparing with the information after reading the file.
+- Simplify the graph in order to remove loops and multiple edges. After simplifying the graph, a weight attribute should have been created, counting the number of interactions between two users.
 
-g_0 <- graph_from_data_frame(data, directed = T)
+```{r}
+#reading data set
+data <- read.table(file = "file:///C:/Users/Thomas Cuna/Documents/IE/MBD/3rd Term Classes/Social Network Analysis/exercise1/mathoverflow-ints.txt", sep = ' ')
 
-summary_g_0 <- summary(g_0)
+#add one more column(weight) with value 1
+data[,5] <- 1
+
+#rename columns
+colnames(data) <- c('from', 'to', 'timestamp', 'type', 'weight')
+
+#creat first igraph object with all the information
+g <- graph_from_data_frame(data,directed = T)
+
+#explore the summary of g
+summary(g)
 ```
-###Answer 1:
+
+
+<span style="color:blue">Answer:
+
+<span style="color:blue">Vertices: 24818
+
+<span style="color:blue">Edges: 506549
+
+<span style="color:blue">Directed: TRUE (DNW -- Directed Named Weighted Graph)
+
+<span style="color:blue">No graph attributes.(V - Vertex, E - Edge, G - Graph)
+
+<span style="color:blue">Vertex attributes: name(v/c - Vertex/Character)
+
+<span style="color:blue">Edge attributes: timestamp (Edge/Numeric), type (Edge/Character), weight (Edge/Numeric).
+</span>
+```{r}
+#simplify the graph: removing multiples and loops but keeping 'weight' attribute
+gs <- simplify(g, 
+               remove.multiple = T, 
+               remove.loops = T, 
+               edge.attr.comb = list(timestamp = 'ignore', type = 'ignore', weight = 'sum'))
+
+# show edge of simplified igraph
+head(E(gs), 92) 
+```
+
+```{r}
+# show weight of simplified igraph
+head(E(gs)$weight, 92)
+```
 <span style="color:blue">
-Vertices: 256491
+Answer:
 
 <span style="color:blue">
-Edges: 354930
+Weight values are no longer equal to 1, but is the sum(or aggregate)
+</span>
+
+## Analyzing the graph
+
+In this section, we will use Igraph functions to analyze some basic features:
+
+- Is the graph connected? If it is not, compute the connected components and analyze the statistical distribution of the size of the resulting components. Do this considering all the links but also using only the different types of edges. 
+- Analyze the statistical distribution of the "weight" attribute created in the previous section and fit it to a power law distribution. Does it fit well enough? 
+
+```{r}
+#Are the graphs Connected?
+IS_g <- is.connected(g)
+IS_gs <- is.connected(gs)
+
+cat(paste(
+          paste0("the original graph is connected:", IS_g),
+          paste0("the simplified graph is connected:", IS_gs),
+          sep = "\n"))
+```
+<span style="color:blue">
+Answer:
 
 <span style="color:blue">
-Directed: TRUE (DNW -- Directed Named Graph)
+the original graph is connected:FALSE
 
 <span style="color:blue">
-Name of graph attributes.(V - Vertex, E - Edge, G - Graph)
-
-<span style="color:blue">
-Vertex attributes: name(v/c - Vertex/Character)
-
-<span style="color:blue">
-Edge attributes: ts(timestamp) (Edge/Numeric).
+the simplified graph is connected:FALSE
 </span>
 
 ```{r}
-no_comp_g_0_weak <- components(g_0, mode = c('weak'))$no
-no_comp_g_0_strong <- components(g_0, mode = c('strong'))$no
+#Subsetting original graph by types of graph
+g_a2q <- subgraph.edges(graph = g, 
+                        eids = which(E(g)$type == "a2q"),
+                        delete.vertices = T)
 
-cat(paste(
-          paste('###Answer 2:'),
-          paste('the number of strong connected components is', no_comp_g_0_strong),
-          paste('the number of weak connected components is', no_comp_g_0_weak),
-          sep = '\n'))
+g_c2q <- subgraph.edges(graph = g, 
+                        eids = which(E(g)$type == "c2q"),
+                        delete.vertices = T)
+
+g_c2a <- subgraph.edges(graph = g, 
+                        eids = which(E(g)$type == "c2a"),
+                        delete.vertices = T)
+
+#Simplifying subseted graph
+gs_a2q <- simplify(g_a2q, remove.multiple = T, remove.loop = T,
+                   edge.attr.comb = list(timestamp = 'ignore', type = 'ignore', weight = 'sum'))
+
+gs_c2q <- simplify(g_c2a, remove.multiple = T, remove.loop = T,
+                   edge.attr.comb = list(timestamp = 'ignore', type = 'ignore', weight = 'sum'))
+
+gs_c2a <- simplify(g_c2q, remove.multiple = T, remove.loop = T,
+                   edge.attr.comb = list(timestamp = 'ignore', type = 'ignore', weight = 'sum'))
 ```
+
+```{r}
+#plotting the distributions for original graph and its subsets
+par(mfrow = c(2,2))
+
+plot(density(components(g)$membership), log = 'xy', main = 'Original')
+plot(density(components(g_a2q)$membership), log = 'xy', main = 'a2q')
+plot(density(components(g_c2a)$membership), log = 'xy', main = 'c2a')
+plot(density(components(g_c2q)$membership), log = 'xy', main = 'c2q')
+```
+```{r}
+#plotting the distributions for simplified graph and its subsets
+par(mfrow = c(2,2))
+
+plot(density(components(gs)$membership), log = 'xy', main = 'Simplified Original')
+plot(density(components(gs_a2q)$membership), log = 'xy', main = 'Simplified a2q')
+plot(density(components(gs_c2a)$membership), log = 'xy', main = 'Simplified c2a')
+plot(density(components(gs_c2q)$membership), log = 'xy', main = 'Simplified c2q')
+```
+```{r}
+#plotting the distributions of weight for simplified graph and its subsets
+par(mfrow = c(2,2))
+
+plot(density(E(gs)$weight), log = 'xy', main = 'Simplified weight')
+plot(density(E(gs_a2q)$weight), log = 'xy', main = 'Simplified a2q weight')
+plot(density(E(gs_c2a)$weight), log = 'xy', main = 'Simplified c2a weight')
+plot(density(E(gs_c2q)$weight), log = 'xy', main = 'Simplified c2q weight')
+```
+
+
+<span style="color:blue">
+Answer: 
+
+<span style="color:blue">
+Solely looking at the graphs, they all seem to have a strong pattern of power-law distribution, to further justify whether they follow the power law distribution, we run the Kolmogorov-Smirnov test as below.
+</span>
 
 
 ```{r}
-par(mfrow = c(3,1))
-plot(density(degree(g_0)), log = 'xy', main = 'g')
-plot(density(degree(g_0, mode = c('in'))), log = 'xy', main = 'in')
-plot(density(degree(g_0, mode = c('out'))), log = 'xy', main = 'out')
-```
-
-```{r}
-fpl_in<-fit_power_law(degree(g_0, mode = c('in')))$KS.p
-fpl_out<-fit_power_law(degree(g_0, mode = c('out')))$KS.p
-
-trans<-round(transitivity(g_0, type = c("global")), 6)
-recip<-round(reciprocity(g_0), 6)
+# power-law distribution?
+fp_gsw<-fit_power_law(E(gs)$weight)$KS.p
+fp_gsw_a2q<-fit_power_law(E(gs_a2q)$weight)$KS.p
+fp_gsw_c2a<-fit_power_law(E(gs_c2a)$weight)$KS.p
+fp_gsw_c2q<-fit_power_law(E(gs_c2q)$weight)$KS.p
 
 cat(paste(
-  paste0('###Answer 3:'),
-  paste0('Follows a power-law distribution? TRUE(Y)/FALSE(N)    p_value > 0.05'),
-  paste0("In degree    : ", fpl_in > 0.05),
-  paste0("Out degree   : ", fpl_out > 0.05),
-  paste0(" "),
-  paste0("Transivity(Prob. that adjacent vertices are connected): ", trans),
-  paste0("Reciprocity(Proportion of mutual connections)         : ", recip),
-  sep = "\n"))
+  paste0('Follow a power-law distribution? TRUE(Y)/FALSE(N)    p_value > 0.05'),        
+  paste0("Simplified Original weight  : ", fp_gsw > 0.05),
+  paste0("Simplified a2q weight       : ", fp_gsw_a2q > 0.05),
+  paste0("Simplified c2a weight       : ", fp_gsw_c2a > 0.05),
+  paste0("Simplified c2q weight       : ", fp_gsw_c2q > 0.05),
+          sep = "\n"))
 ```
 
-## Analyzing communities in a spreading network
- two algorithms:
+Follow a power-law distribution? TRUE(Y)/FALSE(N)    p_value > 0.05
 
-  - walktrap.community
-  - fastgreedy.community
+<span style="color:blue">
+Answer:
 
-Simplify and consider your graph as undirected if it is needed to figure out communities.
+<span style="color:blue">
+Simplified Original weight  : FALSE
 
-You have to make two visualizations of the network with the results provided by the algorithms. In order to comp
-In this section, you have to compute communities usingare both results, keep the same positions for the nodes in both visualizations. Use the _crossing_ function to force the visualization layout to place nodes in the same community together.
+<span style="color:blue">
+Simplified a2q weight       : TRUE
 
-```{r message=F, warning=F}
-g_1 <- graph_from_data_frame(data, directed = F)
+<span style="color:blue">
+Simplified c2a weight       : TRUE
 
-#Creat g_1 as largest component
+<span style="color:blue">
+Simplified c2q weight       : TRUE
+</span>
+
+## Node degree
+
+A typical analysis when dealing with social networks is studying the degree distribution of the nodes.
+- Visualize the statisical distribution of the node degree.
+- Again, is it a power-law distribution? Explain why this is the case.
+
+```{r}
+#plotting distribution of degree of original graph and its subsets
+par(mfrow = c(2,2))
+
+plot(density(degree(g)), log = 'xy', main = 'Original node degree')
+plot(density(degree(g_a2q)), log = 'xy', main = 'a2q node degree')
+plot(density(degree(g_c2a)), log = 'xy', main = 'c2a node degree')
+plot(density(degree(g_c2q)), log = 'xy', main = 'c2q node degree')
+```
+
+
+<span style="color:blue">
+Answer: 
+
+<span style="color:blue">
+Solely looking at the graphs, they all seem to have a strong pattern of power-law distribution, to further justify whether they follow the power law distribution, we run the Kolmogorov-Smirnov test as below.
+</span>
+```{r}
+# power-law distribution?
+fp_gd<-fit_power_law(degree(g))$KS.p
+fp_gd_a2q<-fit_power_law(degree(g_a2q))$KS.p
+fp_gd_c2a<-fit_power_law(degree(g_c2a))$KS.p
+fp_gd_c2q<-fit_power_law(degree(g_c2q))$KS.p
+
+
+cat(paste(
+  paste0('Follow a power-law distribution? TRUE(Y)/FALSE(N)    p_value > 0.05'),        
+  paste0("Original node degree  : ", fp_gd > 0.05),
+  paste0("a2q node degree       : ", fp_gd_a2q > 0.05),
+  paste0("c2a node degree       : ", fp_gd_c2a > 0.05),
+  paste0("c2q node degree       : ", fp_gd_c2q > 0.05),
+          sep = "\n"))
+```
+
+
+Follow a power-law distribution? TRUE(Y)/FALSE(N)    p_value > 0.05
+
+<span style="color:blue">
+Answer:
+
+<span style="color:blue">
+Original node degree  : TRUE
+
+<span style="color:blue">
+a2q node degree       : FALSE
+
+<span style="color:blue">
+c2a node degree       : FALSE
+
+<span style="color:blue">
+c2q node degree       : TRUE
+</span>
+```{r}
+#plotting distribution of degree of simplified graph and its subsets
+par(mfrow = c(2,2))
+
+plot(density(degree(gs)), log = 'xy', main = 'Simplified node degree')
+plot(density(degree(gs_a2q)), log = 'xy', main = 'Simplified a2q node degree')
+plot(density(degree(gs_c2a)), log = 'xy', main = 'Simplified c2a node degree')
+plot(density(degree(gs_c2q)), log = 'xy', main = 'Simplified c2q node degree')
+
+```
+
+<span style="color:blue">
+Answer: 
+
+<span style="color:blue">
+Solely looking at the graphs, they all seem to have a strong pattern of power-law distribution, to further justify whether they follow the power law distribution, we run the Kolmogorov-Smirnov test as below.
+</span>
+
+```{r}
+# power-law distribution?
+fp_gsd<-fit_power_law(degree(gs))$KS.p
+fp_gsd_a2q<-fit_power_law(degree(gs_a2q))$KS.p
+fp_gsd_c2a<-fit_power_law(degree(gs_c2a))$KS.p
+fp_gsd_c2q<-fit_power_law(degree(gs_c2q))$KS.p
+
+cat(paste(
+  paste0('Follow a power-law distribution? TRUE(Y)/FALSE(N)    p_value > 0.05'),        
+  paste0("Simplified node degree    : ", fp_gsd > 0.05),
+  paste0("Simplified a2q node degree: ", fp_gsd_a2q > 0.05),
+  paste0("Simplified c2a node degree: ", fp_gsd_c2a > 0.05),
+  paste0("Simplified c2q node degree: ", fp_gsd_c2q > 0.05),
+          sep = "\n"))
+
+```
+
+
+Follow a power-law distribution? TRUE(Y)/FALSE(N)    p_value > 0.05
+
+<span style="color:blue">
+Answer:
+
+<span style="color:blue">
+Simplified node degree    : FALSE
+
+<span style="color:blue">
+Simplified a2q node degree: FALSE
+
+<span style="color:blue">
+Simplified c2a node degree: TRUE
+
+<span style="color:blue">
+Simplified c2q node degree: FALSE
+</span>
+
+
+## Building connected graphs
+
+In general, in interaction networks, many connected components turn out after creating the graph. However, most of the nodes typically belong to the same giant component. In this section, the goal is:
+- Build a subgraph with all the nodes belonging to the largest connected component.
+- Validate the graph has been correctly created.
+- Analyze how node degree has changed from the original graph to this new subgraph. Find out which nodes have now a smaller number of connections and explain why.
+
+
+```{r}
+#Create subseting function, but only considering strong connection
 largest_comp <- function(graph) {
 cl <- components(graph, mode = 'strong')
 V(graph)[which.max(cl$csize) == cl$membership]
 }
 
-g_1 <- subgraph(g_1, v = largest_comp(g_1))
+#subgraphs of largest connected component of original graph and its sub graphs by types
+g_lcc <- subgraph(g, v = largest_comp(g))
+g_a2q_lcc <- subgraph(g_a2q, v = largest_comp(g_a2q))
+g_c2q_lcc <- subgraph(g_c2q, v = largest_comp(g_c2q))
+g_c2a_lcc <- subgraph(g_c2a, v = largest_comp(g_c2a))
 
-delete_edge_attr(g_1, 'ts')
-E(g_1)$weight <- 1
-g_1 <- simplify(g_1, edge.attr.comb=list(weight="sum"))
-summary(g_1)
+#subgraphs of largest connected component of simplified graph and its sub graphs by types
+gs_lcc <- subgraph(gs, v = largest_comp(gs))
 
-degs <- degree(g_1)
-inodes <- which(degs > 50)
-g_1 <- induced_subgraph(g_1, vids=inodes)
-
-
-#Communities Dectection by the - walktrap.community - fastgreedy.community
-comms_fg <- fastgreedy.community(g_1)
-comms_wt <- walktrap.community(g_1)
-
-crossing_fg <- crossing(comms_fg, g_1)
-crossing_wt <- crossing(comms_wt, g_1)
-
-weight_fg <- as.numeric(!crossing_fg) * 99 + 1
-weight_wt <- as.numeric(!crossing_wt) * 99 + 1
-
-#Communities Plots Function
-comms_plot <- function(comms,G, weight, main){
-plot(comms, G, 
-     # === vertex
-    vertex.color = rgb(0.8,0.4,0.3,0.2),          # Node color
-    vertex.frame.color = rgb(0,0,0,0),                 # Node border color
-    vertex.shape="circle",                        # One of ¡°none¡±, ¡°circle¡±, ¡°square¡±, ¡°csquare¡±, ¡°rectangle¡± ¡°crectangle¡±, ¡°vrectangle¡±, ¡°pie¡±, ¡°raster¡±, or ¡°sphere¡±
-    vertex.size=0.05,                               # Size of the node (default is 15)
-    vertex.size2=NA,                              # The second size of the node (e.g. for a rectangle)
-    
-    # === vertex label
-    vertex.label=LETTERS[1:10],                   # Character vector used to label the nodes
-    vertex.label.color= rgb(0,0,0,0),
-    vertex.label.family="Times",                  # Font family of the label (e.g.¡°Times¡±, ¡°Helvetica¡±)
-    vertex.label.font=2,                          # Font: 1 plain, 2 bold, 3, italic, 4 bold italic, 5 symbol
-    vertex.label.cex=1,                           # Font size (multiplication factor, device-dependent)
-    vertex.label.dist=0,                          # Distance between the label and the vertex
-    vertex.label.degree=0 ,                       # The position of the label in relation to the vertex (use pi)
-    
-    # === Edge
-    edge.color=rgb(0.4,0.8,0.3,0.1),                           # Edge color
-    edge.width=0.005,                                 # Edge width, defaults to 1
-    edge.arrow.size=0,                            # Arrow size, defaults to 1
-    edge.arrow.width=0,                           # Arrow width, defaults to 1
-    edge.lty="solid",                             # Line type, could be 0 or ¡°blank¡±, 1 or ¡°solid¡±, 2 or ¡°dashed¡±, 3 or ¡°dotted¡±, 4 or ¡°dotdash¡±, 5 or ¡°longdash¡±, 6 or ¡°twodash¡±
-    edge.curved=0.2,
-    
-    # === Mark
-    mark.border = rgb(0,0,0,0),
-    mark.expand = 0.01,
-    mark.col = rainbow(max(comms$membership), alpha = 0.1),
-  
-    layout = layout.fruchterman.reingold(G, weight = weight),
-    main = main)
-    }
-
-
-par(mfrow=c(1,2))
-comms_plot(comms_fg, g_1, weight_fg, "Fastgreedy Communities")
-comms_plot(comms_wt, g_1, weight_wt, "Walktrap Communities")
+gs_a2q_lcc <- subgraph(gs_a2q, v = largest_comp(gs_a2q))
+gs_c2q_lcc <- subgraph(gs_c2q, v = largest_comp(gs_c2q))
+gs_c2a_lcc <- subgraph(gs_c2a, v = largest_comp(gs_c2a))
 ```
-
-
-Compare also two metrics to check which algorithm provides the best result and discuss your choice:
-
-  - Internal and external density (for this goal, again, check the function _crossing_ in Igraph)
-  - Modularity
-  
-```{r message = F, warning = F}
-
-internal_density <- function(g,comms){
-list_in <- c()
-
-for(i in 1:length(comms)){
-  sub <- subgraph(g, comms[[i]])
-  nv_c <- vcount(sub)
-  ne <- ecount(sub)
-  list_in <- append(list_in, (2 * ne)/(nv_c * (nv_c - 1)))
+###Changes of degree
+```{r}
+#Creating a function to summarize the degree
+degree_summary <- function(graph){
+  dgr <- degree(graph)
+  MAX = max(dgr)
+  MEAN = mean(dgr)
+  MIN = min(dgr)
+  MEDIAN = median(dgr)
+  SD = sd(dgr)
+  return(list('max' = MAX, 
+              'mean' = MEAN, 
+              'min' = MIN, 
+              'median' = MEDIAN, 
+              'standard deviation' = SD))
 }
 
-list_in[is.na(list_in)] <- 0
+#Creating a dgr_table that takes the summary of the degree of each graph
+dgr_table <- data.frame()
 
-return(mean(list_in))
+for(i in list(g, g_lcc, g_a2q, g_a2q_lcc, g_c2a, g_c2a_lcc, g_c2q, g_c2q_lcc,
+           gs, gs_lcc, gs_a2q, gs_a2q_lcc, gs_c2a, gs_c2a_lcc, gs_c2q, gs_c2q_lcc)){
+  rw <- as.data.frame(degree_summary(i))
+  dgr_table <- rbind(dgr_table, rw)
 }
 
-inter_den_fg <- internal_density(g_1,comms_fg)
-inter_den_wt <- internal_density(g_1,comms_wt)
+#Creating a dgr_diff_table that calculate the different between every two rows of dgr_table, for example the diff_1 = g_lcc - g
+dgr_diff_table <- data.frame(matrix(ncol = 5))
+colnames(dgr_diff_table) <- colnames(dgr_table)
 
-## External Density
-external_density = function(cross, g, comms){
-pier <- names(cross[as.vector(cross)])
-pier <- unlist(strsplit(pier, "\\|"))
-nv_t <- vcount(g)
-list_ex <- c()
+for(i in 1:8){
+  dgr_diff_table <- rbind(dgr_diff_table, dgr_table[2*i - 1, ])
+  dgr_diff_table <- rbind(dgr_diff_table, dgr_table[2*i, ])
+  dgr_diff_table <- rbind(dgr_diff_table, (dgr_table[2*i, ] - dgr_table[2*i - 1, ]))}
 
-for(i in 1:length(comms)){
-    num_bridge <- sum(pier %in% comms[[i]])
-    nv_c <- length(comms[[i]])
-    list_ex <- append(list_ex, num_bridge/(nv_t * (nv_t - nv_c)))
-}
+dgr_diff_table <- dgr_diff_table[-1,]
 
-list_ex[is.na(list_ex)] <- 0
-return(mean(list_ex))
-}
+rownames(dgr_diff_table) <- c('g', 'g_lcc', 'diff_1',
+                          'g_a2q', 'g_a2q_lcc', 'diff_2',
+                          'g_c2a', 'g_c2a_lcc', 'diff_3',
+                          'g_c2q', 'g_c2q_lcc', 'diff_4',
+                          'gs', 'gs_lcc', 'diff_5',
+                          'gs_a2q', 'gs_a2q_lcc', 'diff_6',
+                          'gs_c2a', 'gs_c2a_lcc', 'diff_7',
+                          'gs_c2q', 'gs_c2q_lcc', 'diff_8')
+#degree difference table
+dgr_diff_table
+```
+```{r}
+p1 <- ggplot() +
+  geom_density(aes(log(degree(g)), ), colour = 'blue', fill = 'blue', alpha = 0.1) +
+  geom_density(aes(log(degree(g_lcc))), colour = 'red', fill = 'red', alpha = 0.1) +
+  xlab('log_degree')+ggtitle('Normal')
 
-exter_den_fg <- external_density(crossing_fg, g_1, comms_fg)
-exter_den_wt <- external_density(crossing_wt, g_1, comms_wt)
+p2 <- ggplot() +
+  geom_density(aes(log(degree(gs)), ), colour = 'blue', fill = 'blue', alpha = 0.1) +
+  geom_density(aes(log(degree(gs_lcc))), colour = 'red', fill = 'red', alpha = 0.1) +
+  xlab('log_degree')+ggtitle('Simplified')
 
-## Modularity of Fastgreedy and Walktrap
-
-mod_fg<-round(modularity(comms_fg), 6)
-mod_wt<-round(modularity(comms_wt), 6)
-
-cat(paste(
-  paste0(' '),
-  paste0('###Answer 4:'),
-  paste0("Fastgreedy"),
-  paste0("   Internal Density  : ", inter_den_fg),
-  paste0("   External Density  : ", exter_den_fg),
-  paste0("   Modularity        : ", mod_fg),
-  paste0(' '),
-  paste0("Walktrap"),
-  paste0("   Internal Density  : ", inter_den_wt),
-  paste0("   External Density  : ", exter_den_wt),
-  paste0("   Modularity        : ", mod_wt),
-  sep = "\n"))
+grid.arrange(p1, p2, nrow = 1)
 
 ```
-
-
-
-## Analyzing how the spreading works
-
-In this section, we have to describe how the spreading has evolved:
-
-- Plot a graph showing the number of infected nodes on time (an infected node is a node who has published content - it is in the graph but we see no retweets from him but people retweet his content - or a node who has retweeted a tweet). Describe what you see.
-```{r message = F, warning = F}
-g_2 <- graph_from_data_frame(data, directed = T)
-
-E(g_2)$weight <- 1
-g_2 <- simplify(g_2, edge.attr.comb=list(weight="sum"))
-
-sir_g_2 <- sir(g_2,5,0,no.sim = 1)
-plot(sir_g_2[[1]]$NI ~ sir_g_2[[1]]$times, main="Infected Nodes over Time")
-
-```
-
-### Answer 5
 
 <span style="color:blue">
-The graph shows how the number of infected nodes(y-axis) increase over time(x-axis)
+Based on the above graphs: When the the largest component of the graph is extracted for both the Original and Simplified, we see from the 2 distribution graphs that the log of degree of largest component graph(red) seems to be more normally distributed as compared to the log of the degree of the whole network(blue) because of the outlier nodes with which have less degrees of relation because they have smaller networks.
 </span>
 
-<span style="color:blue">
-In the start, the infection increases slowly, it then steeply increases due to exponential spreading then flattens out arpund time = 1 when most of the nodes have already been infected.
-</span>
+# Visualizing shortest paths
 
+On this previous subgraph, you have to compute:
 
+- The shortest path from the node with the highest degree to the rest of the graph.
+- From all these paths, select one path with the maximum length.
+- Visualize only this path using the plot function.
+- Visualize this path within the giant component subgraph.
 
-- Compute the reproduction number (how many infected nodes on average appear from a previous infected node?). How this number evolve in time (for a given time, considering only past interactions)?
-
-```{r}
-sir_df_0 <- as.data.frame(sir_g_2[[1]])
-len_time <- tail(sir_df_0$times,1)
-
-time_seq <- seq(0,len_time,0.02)
-
-sir_df_1 <- data.frame(time_seq)
-
-sir_df_1$NI <- NA
-
-ini <- 0
-ini_1 <- 0
-times <- sir_df_0$times
-
-for( i in sir_df_1$time_seq){
-  index <- times[ini <= times]
-  index <- index[index <= i]
-  index <- max(index)
-  mx <- sir_df_0[sir_df_0$times == index, 'NI']
-  ini <- index
-  sir_df_1[ini_1, 'NI'] <- mx
-  ini_1 <- ini_1 + 1
-}
-```
+To this end, use the layout.fruchterman.reingold function to place the nodes in the visualization.
 
 ```{r}
-sir_df_1$NS <- 223832 - sir_df_1$NI
-diff_0 <- diff(sir_df_1$NI)
-diff_0 <- append(diff_0, 0)
-sir_df_1$NI_diff <- diff_0
-sir_df_1$R <- sir_df_1$NI_diff/sir_df_1$NI
+#Vertex with highest degree
+v_max_dgr <- which(degree(gs_lcc) == max(degree(gs_lcc)))
 
-avg_R <- mean(sir_df_1$R,na.rm = T)
+#Shortest Paths to vertex with highest degree
+sps <- shortest_paths(gs_lcc, from = v_max_dgr, to = V(gs_lcc))
 
-r_l <- c()
-for(i in 1:nrow(sir_df_1)){
-  r_l <-append(r_l, mean(sir_df_1$R[1:i]))
-}
+#Vertices of Longest Shortest Path to vertex with highest degree
+v_max_len <- sps$vpath[which(lengths(sps$vpath) == max(lengths(sps$vpath)))]
 
-sir_df_1$avg_R <- r_l
+#Subgraph for the Longest Shortest Path
+lsp_sbg <- subgraph(gs_lcc, v = v_max_len[[1]])
 
-plot(R ~ time_seq, sir_df_1,type = 'l',col = 'black')+lines(avg_R ~ time_seq, sir_df_1,type = 'l', col = 'red')
-```
-### Answer 6
-<span style="color:blue">
-The graph shows the how many infected nodes appear on average from previously infected nodes at the given point in time.
-
-<span style="color:blue">
-Increases slowly in the start then sudden growth near the beginning then again stabilizes after initial peak. This is because a lot of the nodes appear closer to the beginning of time period then beginning to gain more connections within already infected/existing nodes in the graph.
-
-<span style="color:blue">
-The black line shows R at each point in time while the red line shows the cumulative average of R at each point in time.
-</span>
-
-
-- Visualize the longest cascade: considering links that infect new nodes (nodes that have not previously appeared in the spreading), create the subgraph and visualize it.
-
-
-```{r}
-#Building the Function
-
-# Independent Cascade model visualization 
-#   - graph: igraph object
-#   - activated: list of initially activated nodes
-IC <- function (g, activated) {
-  # Defining the graph layout to preserve it
-  # the same throughout the visualization
-  l <- layout.fruchterman.reingold(g)
-  # Setting the activated nodes
-  V(g)$activated <- F
-  for (v in activated) {
-    V(g)[v]$activated <- T
-  }
-  # Marking all activations (edges) as "not yet tried"
-  E(g)$tried <- F
-  possible.activations = ecount(g)
-  # The process goes on until there are possible activations
-  while(possible.activations > 0) {
-    # Network visualization (at each simulation step)
-    V(g)$color <- ifelse(V(g)$activated, "red", "lightblue")
-    plot(g, layout=l, edge.width=E(g)$weight,
-                      edge.width=0.005,                                 # Edge width, defaults to 1
-                      edge.arrow.size=0,                            # Arrow size, defaults to 1
-                      edge.arrow.width=0,
-                      vertex.label.color= rgb(0,0,0,0),
-                      vertex.size = 15,
-                      layout = layout.fruchterman.reingold(g, weight = g$weight))
-    # Iterating through activated nodes
-    for(v in V(g)) {
-      if(V(g)[v]$activated) {
-        # Finding activations for each note that have not been tried yet
-        for(w in neighbors(g, V(g)[v]$name, mode="out")){
-          e <- E(g)[(from(V(g)[v]$name) & to(V(g)[w]$name)) | (to(V(g)[v]$name) & from(V(g)[w]$name))]
-          if (! e$tried) {
-            # Activation attempt
-            if (runif(1, 0, 1) <= e$weight){
-              V(g)[w]$activated <- T
-              }
-            e$tried <- T
-            possible.activations <- possible.activations - 1
-            }
-          
-        }
-      }
-    }
-  }
-  # Network visualization after the process has terminated
-  V(g)$color <- ifelse(V(g)$activated, "red", "lightblue")
-  plot(g, layout=l, edge.width=E(g)$weight,
-                      edge.width=0.005,                                 # Edge width, defaults to 1
-                      edge.arrow.size=0,                            # Arrow size, defaults to 1
-                      edge.arrow.width=0,
-                      vertex.label.color= rgb(0,0,0,0),
-                      vertex.size = 15,
-                      layout = layout.fruchterman.reingold(g, weight = g$weight))
-}
+#Plotting lsp_sg
+plot(lsp_sbg)
 ```
 
-```{r message = F, warning = F}
-g_3 <- graph_from_data_frame(data, directed = T)
-
-diameter_g_3 <- get_diameter(g_3)
-
-cascade_g_3 <- subgraph(g_3, diameter_g_3)
-far_ver <- farthest_vertices(cascade_g_3)
-
-E(cascade_g_3)$weight <- 1
-
-
-par(mfrow = c(2,4))
-plot(cascade_g_3, edge.width=0.005,                                 # Edge width, defaults to 1
-                      edge.arrow.size=0,                            # Arrow size, defaults to 1
-                      edge.arrow.width=0,
-                      vertex.label.color= rgb(0,0,0,0),
-                      vertex.size = 15)
-IC(cascade_g_3, names(far_ver$vertices))
-```
-
-## Creating spreading simulations
-
-In this part, we will do the next steps:
-
-  - Generate a random graph with the Barabasi-Albert model with the same number of nodes and (approximately) the same number of edges as in the original graph.
-  - Generate diffusion simulations, using the SI model, on this graph using the "sir" function on igraph with: i) gamma = 0 ii) beta (probability of infecting a neighbor) a should be set in such a way that the mean number of neighbors per node (degree) times beta should be similar to the reproduction rate you have previously computed for the original graph.
-  - Visualize the largest cascade in your simulation, using the same code as in chunk 4.
-
-
-```{r}
-g_sim <- sample_pa(n = vcount(g_0), m = 2, directed = T)
-g_sim
-```
-
-```{r message = F, warning = F}
-beta = mean(degree(g_sim))*avg_R
-gamma = 0
-
-g_sim_sir <- sir(g_sim, beta = beta ,gamma = gamma, no.sim = 1)
-plot(g_sim_sir[[1]]$NI ~ g_sim_sir[[1]]$times)
-
-```
-
-### Answer 6
-<span style="color:blue">
-The graph shows how the number of infected nodes(y-axis) increase over time(x-axis)
-</span>
 
 <span style="color:blue">
-In the start, the infection increases slowly, it then steeply increases due to exponential spreading then flattens out arpund time = 1 when most of the nodes have already been infected.
+Answer:
+
+<span style="color:blue">
+Name of Node with Highest Degree: 290
+
+<span style="color:blue">
+Degree: 50
+
+<span style="color:blue">
+Number of Vertices of the Longest Shortest Path from vertex 290: 7
+
+<span style="color:blue">
+List of the Vertices : 290   3384  2954  48831 57483 58271 58112
 </span>
 
 ```{r}
-sir_df_2 <- as.data.frame(g_sim_sir[[1]])
-len_time <- tail(sir_df_2$times,1)
 
-time_seq <- seq(0,len_time,len_time/216)
+#Visuliazing the longest path(in red) within the largest connected component
+E(gs_lcc)$color <- rgb(0,0,1,0.01)
+E(gs_lcc)$width <- 0.1
+E(gs_lcc, path = as.numeric(v_max_len[[1]]))$color <- rgb(1,0,0,1)
+E(gs_lcc, path = as.numeric(v_max_len[[1]]))$width <- 1
 
-sir_df_3 <- data.frame(time_seq)
-
-sir_df_3$NI <- NA
-
-ini <- 0
-ini_1 <- 0
-times <- sir_df_2$times
-
-for( i in sir_df_3$time_seq){
-  index <- times[ini <= times]
-  index <- index[index <= i]
-  index <- max(index)
-  mx <- sir_df_2[sir_df_2$times == index, 'NI']
-  ini <- index
-  sir_df_3[ini_1, 'NI'] <- mx
-  ini_1 <- ini_1 + 1
-}
+plot(gs_lcc,
+     
+     edge.arrow.size=0.01,
+     vertex.size = 1,
+     vertex.color = rgb(0,0,0,0),
+     vertex.frame.color = rgb(0,0,0,0),
+     vertex.label.color= rgb(0,0,0,0))
 ```
 
-```{r}
-sir_df_3$NS <- max(sir_df_3$NI) - sir_df_3$NI
-diff_0 <- diff(sir_df_3$NI)
-diff_0 <- append(diff_0, 0)
-sir_df_3$NI_diff <- diff_0
-sir_df_3$R <- sir_df_3$NI_diff/sir_df_3$NI
-
-avg_R_new <- mean(sir_df_3$R,na.rm = T)
-
-r_l <- c()
-for(i in 1:nrow(sir_df_3)){
-  r_l <-append(r_l, mean(sir_df_3$R[1:i]))
-}
-
-sir_df_3$avg_R <- r_l
-
-plot(R ~ time_seq, sir_df_3,type = 'l',col = 'black')+lines(avg_R ~ time_seq, sir_df_3,type = 'l', col = 'red')
-```
-## Answer 8
-<span style="color:blue">
-The graph shows the how many infected nodes appear on average from previously infected nodes at the given point in time.
 
 <span style="color:blue">
-Increases slowly in the start then sudden growth near the beginning then again stabilizes after initial peak. This is because a lot of the nodes appear closer to the beginning of time period then beginning to gain more connections within already infected/existing nodes in the graph.
+Answer:
 
 <span style="color:blue">
-The black line shows R at each point in time while the red line shows the cumulative average of R at each point in time.
-</span>
+Network: Largest Connected Component
 
-
-
-```{r message = F, warning = F}
-diameter_g_sim <- get_diameter(g_sim)
-cascade_g_sim <- subgraph(g_sim, diameter_g_sim)
-far_ver_g_sim <- farthest_vertices(cascade_g_sim)
-
-E(cascade_g_sim)$weight <- 1
-
-plot(cascade_g_sim, edge.width=0.005,                                 # Edge width, defaults to 1
-                      edge.arrow.size=0,                            # Arrow size, defaults to 1
-                      edge.arrow.width=0,
-                      vertex.size = 15)
-#IC(cascade_g_sim, far_ver_g_sim)
-```
-
-
-## Generate a video (optional)
-
-This part of the assignment will be considered in your final grades as very positive if you are able to do it :)
-
-- Consider the largest weak connected component in the original data.
-- The goal is creating a video showing the evolution of the graph in time.
-- To this end, you must follow the code specified here: http://estebanmoro.org/2015/12/temporal-networks-with-r-and-igraph-updated/
-- As you can see in the last part of the post, there is a code for generating videos by creating every frame in the video.
-- Every frame is just a static visualization of the graph by removing "future" links and considering the previous positions of the nodes in the layout using the appropiate parameter.
-- Finally, after generating the frames, you merge them by using a video tool (in the post, ffmpeg is used)
-
-```{r}
-# CHUNK 8
-
-
-```
-
+<span style="color:blue">
+Red Highlighted path: Longest Shortest Path from vertex 290
